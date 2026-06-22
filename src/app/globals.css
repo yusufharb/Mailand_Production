@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ─── Design tokens ─── */
+@theme {
+  --color-primary:      #FFB6C1;
+  --color-primary-dark: #FF9EAB;
+  --color-secondary:    #FFFDD0;
+  --color-rosegold:     #B76E79;
+  --color-cream:        #FAF9F6;
+  --font-serif:         var(--font-serif, "Georgia", serif);
+  --font-sans:          var(--font-sans, "Inter", sans-serif);
+}
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── CSS variables ─── */
+:root {
+  --background: #FAF9F6;
+  --foreground: #1a1a1a;
+}
+
+/* ─── Base ─── */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans, "Inter", system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ─── Serif headings ─── */
+.font-serif,
+h1, h2 {
+  font-family: var(--font-serif, "Georgia", serif);
+}
+
+/* ─── Custom scrollbar ─── */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #FFB6C1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #FF9EAB; }
+
+/* ─── Hide scrollbar (utility) ─── */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Smooth image rendering ─── */
+img {
+  image-rendering: auto;
+  max-width: 100%;
+}
+
+/* ─── Focus rings ─── */
+*:focus-visible {
+  outline: 2px solid #FFB6C1;
+  outline-offset: 2px;
+}
+
+/* ─── Selection color ─── */
+::selection {
+  background: #FFB6C1;
+  color: white;
+}
+
+/* ─── Animations ─── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.4s ease-out forwards;
+}
+
+/* ─── Admin table hover ─── */
+.admin-table tr:hover td {
+  background: #fafafa;
+}
