@@ -13,10 +13,14 @@ export async function PUT(
     const dbPayload: any = {};
     if (body.name !== undefined) dbPayload.name = body.name;
     if (body.description !== undefined) dbPayload.description = body.description;
+    if (body.category !== undefined) dbPayload.category = body.category;
     if (body.price !== undefined) dbPayload.price = body.price;
+    if (body.discountPrice !== undefined) dbPayload.discount_price = body.discountPrice;
+    if (body.images !== undefined) dbPayload.images = body.images;
+    if (body.sizes !== undefined) dbPayload.sizes = body.sizes;
     if (body.stock !== undefined) dbPayload.stock = body.stock;
-    if (body.images !== undefined) dbPayload.image = body.images[0] || "";
     if (body.isFeatured !== undefined) dbPayload.is_featured = body.isFeatured;
+    if (body.isVisible !== undefined) dbPayload.is_visible = body.isVisible;
 
     const { data, error } = await supabaseAdmin
       .from("products")
