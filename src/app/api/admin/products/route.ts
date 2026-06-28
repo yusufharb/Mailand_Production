@@ -10,10 +10,14 @@ export async function POST(request: Request) {
     const dbPayload = {
       name: body.name,
       description: body.description,
+      category: body.category || "Standard",
       price: body.price,
+      discount_price: body.discountPrice,
+      images: body.images || [],
+      sizes: body.sizes || ["Standard"],
       stock: body.stock,
-      image: body.images?.[0] || "",
       is_featured: body.isFeatured ?? false,
+      is_visible: body.isVisible ?? true,
     };
     
     console.log("Mapped DB payload:", dbPayload);

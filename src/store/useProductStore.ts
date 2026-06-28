@@ -33,14 +33,15 @@ export const useProductStore = create<ProductStore>((set, get) => ({
           id: p.id,
           name: p.name,
           description: p.description,
-          category: "Standard", // Supabase schema missing category, using default
+          category: p.category || "Standard",
           price: p.price,
-          images: p.image ? [p.image] : [],
-          sizes: ["Standard"],
+          discountPrice: p.discount_price,
+          images: p.images || [],
+          sizes: p.sizes || ["Standard"],
           stock: p.stock,
           reviews: [],
           isFeatured: p.is_featured,
-          isVisible: true, // Client-only fallback
+          isVisible: p.is_visible ?? true,
           createdAt: p.created_at,
         }));
         set({ products: mappedProducts });
@@ -120,12 +121,7 @@ export const useProductStore = create<ProductStore>((set, get) => ({
   toggleVisibility: async (id) => {
     const product = get().getProductById(id);
     if (!product) return;
-    // Just toggle locally since DB doesn't have it
-    set((state) => ({
-      products: state.products.map((p) =>
-        p.id === id ? { ...p, isVisible: !p.isVisible } : p
-      ),
-    }));
+    await get().updateProduct(id, { isVisible: !product.isVisible });
   },
 }));
 

@@ -18,20 +18,38 @@ export async function PUT(request: Request) {
       updated_at: new Date().toISOString()
     };
 
-    const { data, error } = await supabaseAdmin
+    // Fetch the existing settings row first to get its ID
+    const { data: existingSettings, error: fetchError } = await supabaseAdmin
       .from("settings")
-      .update(dbPayload)
-      .eq("id", 1) // Enforced singleton row
-      .select()
-      .single();
+      .select("id")
+      .limit(1)
+      .maybeSingle();
 
-    if (error) {
-      // If it fails to update, maybe row id=1 doesn't exist yet, but our schema script creates it.
-      // We could try an upsert or check error type.
-      throw error;
+    if (fetchError) throw fetchError;
+
+    let result;
+    if (existingSettings?.id) {
+      // Update existing settings row
+      const { data, error } = await supabaseAdmin
+        .from("settings")
+        .update(dbPayload)
+        .eq("id", existingSettings.id)
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
+    } else {
+      // Insert new settings row if empty
+      const { data, error } = await supabaseAdmin
+        .from("settings")
+        .insert([dbPayload])
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error updating settings:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
