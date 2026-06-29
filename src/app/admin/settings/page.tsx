@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAdminStore } from "@/store/useAdminStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -15,12 +15,53 @@ export default function SettingsPage() {
   const [footer, setFooter] = useState({
     ...siteSettings.footer,
     links: [...siteSettings.footer.links],
-    social: { ...siteSettings.footer.social },
+    social: {
+      instagram: siteSettings.footer.social?.instagram || "",
+      twitter: siteSettings.footer.social?.twitter || "",
+      facebook: siteSettings.footer.social?.facebook || "",
+      tiktok: siteSettings.footer.social?.tiktok || "",
+    },
   });
 
-  const handleHeroFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      setHero({ ...hero, image: URL.createObjectURL(e.target.files[0]) });
+  // Sync state when siteSettings is loaded or changed
+  useEffect(() => {
+    if (siteSettings) {
+      setHero({ ...siteSettings.hero });
+      setFooter({
+        ...siteSettings.footer,
+        links: [...siteSettings.footer.links],
+        social: {
+          instagram: siteSettings.footer.social?.instagram || "",
+          twitter: siteSettings.footer.social?.twitter || "",
+          facebook: siteSettings.footer.social?.facebook || "",
+          tiktok: siteSettings.footer.social?.tiktok || "",
+        },
+      });
+    }
+  }, [siteSettings]);
+
+  const handleHeroFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const toastId = toast.loading("Uploading image to storage...");
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("file", file);
+
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: formDataUpload,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload");
+
+      setHero({ ...hero, image: data.url });
+      toast.success("Hero image uploaded successfully!", { id: toastId });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast.error(error.message || "Failed to upload image", { id: toastId });
     }
   };
 
@@ -223,14 +264,14 @@ export default function SettingsPage() {
               <Globe size={14} className="text-gray-400" />
               Social Media Links
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {(["instagram", "twitter", "facebook"] as const).map((platform) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {(["instagram", "twitter", "facebook", "tiktok"] as const).map((platform) => (
                 <div key={platform}>
                   <label className="text-xs text-gray-400 capitalize block mb-1">
-                    {platform}
+                    {platform === "twitter" ? "X / Twitter" : platform}
                   </label>
                   <Input
-                    value={footer.social[platform]}
+                    value={footer.social[platform] || ""}
                     onChange={(e) =>
                       setFooter({
                         ...footer,

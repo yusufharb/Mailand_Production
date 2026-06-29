@@ -77,10 +77,28 @@ export default function ProductsPage() {
     setImageUrl("");
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const url = URL.createObjectURL(e.target.files[0]);
-      setFormData((f) => ({ ...f, images: [...f.images, url] }));
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const toastId = toast.loading("Uploading image to storage...");
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("file", file);
+
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: formDataUpload,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload");
+
+      setFormData((f) => ({ ...f, images: [...f.images, data.url] }));
+      toast.success("Image uploaded successfully!", { id: toastId });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast.error(error.message || "Failed to upload image", { id: toastId });
     }
   };
 

@@ -86,6 +86,7 @@ export interface SiteSettings {
       instagram: string;
       twitter: string;
       facebook: string;
+      tiktok?: string;
     };
   };
 }

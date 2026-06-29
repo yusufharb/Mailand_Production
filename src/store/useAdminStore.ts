@@ -59,6 +59,7 @@ const defaultSiteSettings: SiteSettings = {
       instagram: "#",
       twitter: "#",
       facebook: "#",
+      tiktok: "#",
     },
   },
 };
