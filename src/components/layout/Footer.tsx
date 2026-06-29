@@ -1,6 +1,6 @@
 "use client";
 
-import { FaInstagram, FaTwitter, FaFacebookF } from "react-icons/fa";
+import { FaInstagram, FaTwitter, FaFacebookF, FaTiktok } from "react-icons/fa";
 import { useAdminStore } from "@/store/useAdminStore";
 import Link from "next/link";
 
@@ -25,33 +25,50 @@ export default function Footer() {
               {footer.about}
             </p>
             <div className="flex space-x-3 mt-6">
-              <a
-                href={footer.social.instagram}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Instagram"
-                className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
-              >
-                <FaInstagram size={15} />
-              </a>
-              <a
-                href={footer.social.twitter}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Twitter"
-                className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
-              >
-                <FaTwitter size={15} />
-              </a>
-              <a
-                href={footer.social.facebook}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Facebook"
-                className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
-              >
-                <FaFacebookF size={15} />
-              </a>
+              {footer.social.instagram && footer.social.instagram !== "#" && (
+                <a
+                  href={footer.social.instagram}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Instagram"
+                  className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
+                >
+                  <FaInstagram size={15} />
+                </a>
+              )}
+              {footer.social.twitter && footer.social.twitter !== "#" && (
+                <a
+                  href={footer.social.twitter}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Twitter"
+                  className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
+                >
+                  <FaTwitter size={15} />
+                </a>
+              )}
+              {footer.social.facebook && footer.social.facebook !== "#" && (
+                <a
+                  href={footer.social.facebook}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Facebook"
+                  className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
+                >
+                  <FaFacebookF size={15} />
+                </a>
+              )}
+              {footer.social.tiktok && footer.social.tiktok !== "#" && (
+                <a
+                  href={footer.social.tiktok}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="TikTok"
+                  className="w-9 h-9 rounded-full bg-pink-50 flex items-center justify-center text-gray-400 hover:bg-primary hover:text-white transition-all duration-200"
+                >
+                  <FaTiktok size={15} />
+                </a>
+              )}
             </div>
           </div>
 
