@@ -12,9 +12,8 @@
 -- ============================================================
 -- Each size is now an object: { name, price, discountPrice?, stock }
 -- Old TEXT[] rows are converted to JSONB objects using their name only,
--- with price copied from the product's own price column and stock set to 0
--- (you will need to manually correct stock values for existing products
---  via the Admin Dashboard after running this migration).
+-- with price copied from the product's own price column and stock set to 0.
+-- (Correct stock values for existing products via the Admin Dashboard.)
 
 DO $$
 BEGIN
@@ -31,7 +30,7 @@ BEGIN
     ALTER TABLE public.products ALTER COLUMN sizes DROP DEFAULT;
 
     -- Convert TEXT[] → JSONB
-    -- Each old string like "100ml" becomes {"name":"100ml","price":0,"stock":0}
+    -- Each old string like "100ml" becomes {"name":"100ml","price":<product.price>,"stock":0}
     ALTER TABLE public.products
       ALTER COLUMN sizes TYPE JSONB
       USING (
@@ -88,18 +87,38 @@ $$;
 
 
 -- ============================================================
--- STEP 3: Create or replace the place_order RPC function
+-- STEP 3: Drop old function signature if it exists
 -- ============================================================
--- This function:
---   1. Creates an order row
---   2. Locks each product row with FOR UPDATE (prevents overselling)
---   3. Finds the requested size in the JSONB array
---   4. Validates sufficient stock
---   5. Deducts stock atomically
---   6. Inserts order_items rows with a full product snapshot
---   7. Returns the new order's UUID
+-- The old signature accepted p_total_price from the client.
+-- We drop it so the new signature (without p_total_price) takes effect cleanly.
+DROP FUNCTION IF EXISTS public.place_order(TEXT, TEXT, TEXT, TEXT, TEXT, NUMERIC, TEXT, JSONB);
+
+
+-- ============================================================
+-- STEP 4: Create the hardened place_order RPC function
+-- ============================================================
 --
--- If ANY step fails, the entire transaction is rolled back automatically.
+-- Security improvements over the original:
+--   1. Quantity > 0 validated before any DB work
+--   2. Price is read from the DB (JSONB size object), never trusted from client
+--   3. Total is calculated server-side from DB prices × quantities
+--   4. Top-level stock is recalculated as SUM of all size stocks after each update
+--   5. SET search_path = public prevents search-path-injection attacks
+--
+-- Behaviour:
+--   • Creates an order header row
+--   • FOR UPDATE locks each product row (prevents concurrent overselling)
+--   • Finds the requested size in the JSONB array
+--   • Validates quantity > 0 and sufficient stock
+--   • Deducts stock from the size object
+--   • Recalculates the top-level stock from the JSONB array
+--   • Inserts order_items with the DB price (snapshot)
+--   • Calculates total from DB prices and writes it to the order
+--   • Returns { order_id, order_number }
+--   • Any failure rolls back the entire transaction automatically
+--
+-- p_items: JSONB array of { product_id UUID, name TEXT, size TEXT, quantity INT }
+--   NOTE: "price" from the client is intentionally ignored.
 
 CREATE OR REPLACE FUNCTION public.place_order(
   p_customer_name  TEXT,
@@ -107,48 +126,71 @@ CREATE OR REPLACE FUNCTION public.place_order(
   p_address        TEXT,
   p_city           TEXT,
   p_notes          TEXT,
-  p_total_price    NUMERIC,
   p_payment_method TEXT,
-  p_items          JSONB   -- Array of { product_id, name, size, quantity, price }
+  p_items          JSONB
 )
-RETURNS JSONB               -- Returns { order_id, order_number }
+RETURNS JSONB
 LANGUAGE plpgsql
-SECURITY DEFINER            -- Runs with owner privileges (bypasses RLS for stock update)
+SECURITY DEFINER
+SET search_path = public          -- ← prevents search-path injection
 AS $$
 DECLARE
-  v_order_id     UUID;
-  v_order_number TEXT;
-  v_item         JSONB;
-  v_product      RECORD;
-  v_new_sizes    JSONB;
-  v_size_obj     JSONB;
-  v_size_idx     INT;
-  v_has_size     BOOLEAN;
-  v_qty          INT;
+  v_order_id       UUID;
+  v_order_number   TEXT;
+  v_item           JSONB;
+  v_product        RECORD;
+  v_new_sizes      JSONB;
+  v_size_obj       JSONB;
+  v_size_idx       INT;
+  v_has_size       BOOLEAN;
+  v_qty            INT;
+  v_db_price       NUMERIC;       -- price read from the DB, not the client
+  v_db_discount    NUMERIC;       -- discountPrice from the DB (may be NULL)
+  v_unit_price     NUMERIC;       -- effective price (discount if set, else price)
+  v_total_price    NUMERIC := 0;  -- server-calculated order total
+  v_computed_stock INT;           -- stock recalculated from JSONB sizes
 BEGIN
-  -- ── 1. Generate a human-readable order number ──────────────
-  v_order_number := 'ORD-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' ||
-                   UPPER(SUBSTRING(gen_random_uuid()::TEXT, 1, 6));
 
-  -- ── 2. Insert the order header ─────────────────────────────
-  INSERT INTO public.orders (
+  -- ── 0. Basic input guard ────────────────────────────────────
+  IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
+    RAISE EXCEPTION 'Order must contain at least one item';
+  END IF;
+
+  -- ── 1. Validate quantities before touching any rows ─────────
+  FOR v_item IN SELECT value FROM jsonb_array_elements(p_items)
+  LOOP
+    IF (v_item->>'quantity')::INT <= 0 THEN
+      RAISE EXCEPTION
+        'Quantity must be greater than zero (got % for product %)',
+        (v_item->>'quantity'),
+        (v_item->>'product_id');
+    END IF;
+  END LOOP;
+
+  -- ── 2. Generate a human-readable order number ───────────────
+  v_order_number := 'ORD-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' ||
+                    UPPER(SUBSTRING(gen_random_uuid()::TEXT, 1, 6));
+
+  -- ── 3. Insert order header (total_price filled in at step 7) ─
+  INSERT INTO orders (
     customer_name, phone, address, city, notes,
     total_price, payment_method, order_number
   )
   VALUES (
     p_customer_name, p_phone, p_address, p_city, p_notes,
-    p_total_price, p_payment_method, v_order_number
+    0,              -- placeholder; updated after items are processed
+    p_payment_method, v_order_number
   )
   RETURNING id INTO v_order_id;
 
-  -- ── 3. Process each line item ──────────────────────────────
+  -- ── 4. Process each line item ───────────────────────────────
   FOR v_item IN SELECT value FROM jsonb_array_elements(p_items)
   LOOP
     v_qty := (v_item->>'quantity')::INT;
 
     -- Lock the product row to prevent concurrent overselling
     SELECT * INTO v_product
-    FROM public.products
+    FROM products
     WHERE id = (v_item->>'product_id')::UUID
     FOR UPDATE;
 
@@ -156,9 +198,11 @@ BEGIN
       RAISE EXCEPTION 'Product not found: %', (v_item->>'product_id');
     END IF;
 
-    -- ── 4. Find the requested size in the JSONB array ────────
+    -- ── 5. Find the requested size in the DB ──────────────────
     v_new_sizes := v_product.sizes;
     v_has_size  := false;
+    v_db_price  := NULL;
+    v_db_discount := NULL;
 
     FOR v_size_idx IN 0 .. jsonb_array_length(v_new_sizes) - 1
     LOOP
@@ -167,7 +211,12 @@ BEGIN
       IF v_size_obj->>'name' = (v_item->>'size') THEN
         v_has_size := true;
 
-        -- ── 5. Validate stock ──────────────────────────────
+        -- ── 6. Read price from the DB (ignore client price) ───
+        v_db_price    := (v_size_obj->>'price')::NUMERIC;
+        v_db_discount := NULLIF(v_size_obj->>'discountPrice', '')::NUMERIC;
+        v_unit_price  := COALESCE(v_db_discount, v_db_price);
+
+        -- ── 7. Validate stock ──────────────────────────────────
         IF (v_size_obj->>'stock')::INT < v_qty THEN
           RAISE EXCEPTION
             'Insufficient stock for "%" size "%". Requested: %, Available: %',
@@ -177,7 +226,7 @@ BEGIN
             (v_size_obj->>'stock')::INT;
         END IF;
 
-        -- ── 6. Deduct stock from this size ─────────────────
+        -- ── 8. Deduct stock from this size ─────────────────────
         v_size_obj := jsonb_set(
           v_size_obj,
           '{stock}',
@@ -188,7 +237,7 @@ BEGIN
           ARRAY[v_size_idx::TEXT],
           v_size_obj
         );
-        EXIT; -- found and processed, stop looping
+        EXIT;
       END IF;
     END LOOP;
 
@@ -198,32 +247,46 @@ BEGIN
         (v_item->>'size'), v_product.name;
     END IF;
 
-    -- ── 7. Persist the updated sizes + total stock ────────────
-    UPDATE public.products
+    -- ── 9. Recalculate top-level stock as SUM of all size stocks
+    SELECT COALESCE(SUM((s->>'stock')::INT), 0)
+    INTO v_computed_stock
+    FROM jsonb_array_elements(v_new_sizes) AS s;
+
+    -- ── 10. Persist updated sizes and recalculated stock ────────
+    UPDATE products
     SET
       sizes = v_new_sizes,
-      stock = stock - v_qty   -- keep the top-level stock in sync
+      stock = v_computed_stock        -- derived from JSONB, never decremented directly
     WHERE id = v_product.id;
 
-    -- ── 8. Insert order item with full snapshot ───────────────
-    INSERT INTO public.order_items (
+    -- ── 11. Accumulate server-side total ────────────────────────
+    v_total_price := v_total_price + (v_unit_price * v_qty);
+
+    -- ── 12. Insert order item snapshot (DB price, not client) ───
+    INSERT INTO order_items (
       order_id, product_id, name, size, quantity, price
     )
     VALUES (
       v_order_id,
       v_product.id,
-      v_item->>'name',
+      COALESCE(v_item->>'name', v_product.name),  -- fallback to DB name
       v_item->>'size',
       v_qty,
-      (v_item->>'price')::NUMERIC
+      v_unit_price                                 -- DB-sourced price
     );
 
   END LOOP;
 
-  -- ── 9. Return order details ────────────────────────────────
+  -- ── 13. Write the server-calculated total back to the order ──
+  UPDATE orders
+  SET total_price = v_total_price
+  WHERE id = v_order_id;
+
+  -- ── 14. Return order details ─────────────────────────────────
   RETURN jsonb_build_object(
     'order_id',     v_order_id,
-    'order_number', v_order_number
+    'order_number', v_order_number,
+    'total_price',  v_total_price
   );
 
 END;
@@ -231,21 +294,33 @@ $$;
 
 
 -- ============================================================
--- STEP 4: Grant execute permission so the anon/service role can call it
+-- STEP 5: Grant execute permission
 -- ============================================================
 GRANT EXECUTE ON FUNCTION public.place_order(
-  TEXT, TEXT, TEXT, TEXT, TEXT, NUMERIC, TEXT, JSONB
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB
 ) TO anon, authenticated, service_role;
 
 
 -- ============================================================
 -- DONE
 -- ============================================================
--- Verify by running:
---   SELECT column_name, data_type FROM information_schema.columns
+-- Verify with:
+--
+--   -- 1. Check sizes column type
+--   SELECT column_name, data_type
+--   FROM information_schema.columns
 --   WHERE table_name = 'products' AND column_name = 'sizes';
 --   -- Expected: data_type = 'jsonb'
 --
---   \df public.place_order
---   -- Expected: function listed
+--   -- 2. Check function exists with correct signature
+--   SELECT proname, prosrc
+--   FROM pg_proc
+--   WHERE proname = 'place_order';
+--
+--   -- 3. Smoke-test (replace UUIDs with real values from your products table):
+--   -- SELECT public.place_order(
+--   --   'Test Customer', '+201234567890', '123 Test St', 'Cairo', '',
+--   --   'Cash On Delivery',
+--   --   '[{"product_id":"<UUID>","name":"Test Product","size":"100ml","quantity":1}]'::jsonb
+--   -- );
 -- ============================================================
