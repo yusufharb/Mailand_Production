@@ -1,6 +1,7 @@
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import CartDrawer from "@/components/cart/CartDrawer";
+import ScrollingPromotionBar from "@/components/layout/ScrollingPromotionBar";
 import { Toaster } from "react-hot-toast";
 
 export default function ShopLayout({
@@ -10,6 +11,7 @@ export default function ShopLayout({
 }) {
   return (
     <div className="flex flex-col min-h-screen">
+      <ScrollingPromotionBar />
       <Navbar />
       <CartDrawer />
       <main className="flex-grow">{children}</main>

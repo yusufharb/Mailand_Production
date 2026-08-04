@@ -335,7 +335,7 @@ export default function Home() {
       </section>
 
       {/* ─── Social gallery ─── */}
-      <section className="py-16 bg-pink-50 overflow-hidden">
+     {/*  <section className="py-16 bg-pink-50 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-10 gap-3">
             <div>
@@ -376,9 +376,9 @@ export default function Home() {
           </div>
         </div>
       </section>
-
+*/}
       {/* ─── Newsletter ─── */}
-      <section className="py-20 bg-gray-900 text-white">
+    {/*   <section className="py-20 bg-gray-900 text-white">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <span className="text-xs font-semibold text-pink-300 uppercase tracking-widest mb-4 block">
             Stay in the glow
@@ -416,7 +416,7 @@ export default function Home() {
             </div>
           )}
         </div>
-      </section>
+      </section> */}
     </div>
   );
 }
